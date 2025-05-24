@@ -86,6 +86,8 @@ El **ASN** es un identificador único asignado a un Sistema Autónomo. Es esenci
 * **Tipo**: Institución de investigación
 * **Uso**: Enrutamiento de datos científicos globales
 
+---
+
 ### **ASN de mi conexion actual**
 
 El ASN de la conexion actual es AS7303 (Telecom Argentina S.A.)
