@@ -86,8 +86,16 @@ El **ASN** es un identificador único asignado a un Sistema Autónomo. Es esenci
 * **Tipo**: Institución de investigación
 * **Uso**: Enrutamiento de datos científicos globales
 
+### **ASN de mi conexion actual**
+
+El ASN de la conexion actual es AS7303 (Telecom Argentina S.A.)
+  - **Tasa de Trafico**: 10-20 Tbps
+  - **Alcance Geográfico**: Regional
+  - **Protocolos compatibles**: IPv4 Unicast, IPv6 
 ---
 
 ### ¿Qué es el Border Gateway Protocol (BGP)?
 
 El protocolo de puerta de enlace fronteriza (BGP) es un conjunto de reglas que determinan las mejores rutas de red para la transmisión de datos en Internet. Internet se compone de miles de redes privadas, públicas, corporativas y gubernamentales vinculadas entre sí mediante protocolos, dispositivos y tecnologías de comunicación estandarizados. Cuando navega por Internet, los datos viajan a través de varias redes antes de llegar a su destino. La responsabilidad del BGP es analizar todas las rutas disponibles por las que podrían viajar los datos y seleccionar la mejor ruta. Por ejemplo, cuando un usuario de los Estados Unidos carga una aplicación con servidores de origen en Europa, el BGP hace que la comunicación sea rápida y eficiente.
+
+### 
