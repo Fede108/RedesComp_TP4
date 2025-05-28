@@ -217,14 +217,14 @@ En Router 1:
 ![image](https://github.com/user-attachments/assets/b84e9ff9-faa5-49b4-8a15-8359c233c552)
 
 En la salida de R1 pude ver una línea como:
-
+```shell
 10.0.0.1  …  Up/Down 00:00:53  State/PfxRcd 4
-
+```
 Salida la cual indica que la sesión eBGP con su vecino en AS100 ha llegado a estado Established y ha recibido 4 prefijos (PfxRcd 4). 
 A continuación usamos show ip bgp para listar todos los prefijos conocidos por BGP y sus atributos (Next Hop, AS-PATH, origen). Por ejemplo, en R1 aparecían tanto su red local 192.168.2.0/24 con Next Hop 0.0.0.0 (prefijo propio) como la red 192.168.1.0/24 aprendida de R0 con Next Hop 10.0.0.1. Finalmente, con show ip route bgp confirmamos que esas rutas se habían instalado en la RIB, pues R1 mostraba:
-
+```
 B 192.168.1.0/24 [20/0] via 10.0.0.1
-
+```
 donde la “B” indica que proviene de BGP y, por tanto, el router usará esa ruta para reenviar tráfico hacia AS100.
 
 ---
@@ -254,6 +254,24 @@ Con la vecindad BGP ya establecida y las rutas correctamente instaladas, hicimos
 ### 3) Simulación de tráfico y caída/recuperación de un router
 Para entender cómo reacciona BGP ante una interrupción, apagué intencionadamente Router 1 (AS200) y observé en R0 los mensajes capturados por Wireshark dentro de Packet Tracer (Foto 3). Primero apareció un **TCP FIN** de la conexión BGP y, tras reiniciar R1, un **three-way handshake** sobre el puerto 179. A continuación vi los mensajes **OPEN** desde ambos extremos y varios **KEEPALIVE** hasta que la sesión volvió a _Established_, y finalmente los **UPDATE** con los prefijos intercambiados. Esta secuencia demuestra cómo BGP restablece la vecindad y anuncia las rutas al recuperarse.
 
+![image](https://github.com/user-attachments/assets/b96332bb-7de3-47d8-a5cb-1aa542e885eb)
+
+R0 ( 10.0.0.1) tambien envia el mensaje de OPEN a R1 (10.0.0.2)
+
+![image](https://github.com/user-attachments/assets/50000d31-a855-4f66-ab94-1de4f9960fe0)
+
+Cada uno recibe el OPEN correspondiente y envía el mensaje KEEPALIVE para establecer la conexión.
+
+![image](https://github.com/user-attachments/assets/21d03a5d-936c-4946-8e2a-7041b02f37ef)
+
+![image](https://github.com/user-attachments/assets/fd96f488-ae58-42a0-a53c-1d49618fb57b)
+
+Una vez que se establece la conexión empieza el intercambiar rutas (UPDATEs)
+
+![image](https://github.com/user-attachments/assets/e4b4da81-95b3-4844-9ddc-4a0ce9091c9b)
+
+![image](https://github.com/user-attachments/assets/a693d3f0-e4f2-45f2-a232-b978832b5bf8)
+
 ---
 
 ### 4) Configuración IPv6 y verificación de conectividad entre ambos AS
@@ -276,11 +294,99 @@ Para dejar constancia clara de la topología, armamos la siguiente tabla con cad
 ### 6) Incorporación de R2, switch y quinto host (h4) en AS100
 Se añadió un tercer router (R2) al AS100, conectando su FastEthernet0/0 a R0 (`192.168.10.2/24` ↔ `192.168.10.1/24`) y conectando un switch a su FastEthernet0/1. Al switch se conectó el host h4 configurado con `192.168.3.2/24` y puerta de enlace `192.168.3.1`. Con ello quedó una nueva LAN interna (`192.168.3.0/24`) dentro de AS100.
 
+![image](https://github.com/user-attachments/assets/d6d27e74-2649-493a-bd3c-7dafb1f35026)
+
 ---
 
 ### 7) Configuración de rutas estáticas en AS100
 Para que R0 y R2 conozcan mutuamente todas las subredes de AS100 se usaron estos comandos:
 
 **En R0:**
+```
+ip route 192.168.3.0 255.255.255.0 192.168.10.2
+ip route 192.168.2.0 255.255.255.0 10.0.0.2
+```
+**En R2:**
+```
+ip route 192.168.1.0 255.255.255.0 192.168.10.1
+ip route 192.168.2.0 255.255.255.0 192.168.10.1
+```
+**En R1:**
+```
+ip route 192.168.3.0 255.255.255.0 10.0.0.1
+```
 
+Estas rutas permiten que cualquier host de AS100 y AS200 se comunique con h4.
 
+---
+
+### 8) Redistribución de OSPF en BGP y análisis de configuraciones
+Para integrar dinámicamente la red de AS100 en BGP, primero habilitamos OSPF en AS100:
+
+**En R0:**
+```
+router ospf 1
+network 10.0.0.0 0.0.0.255 area 0
+network 192.168.1.0 0.0.0.255 area 0
+network 192.168.10.0 0.0.0.255 area 0
+```
+
+**En R2:**
+```
+router ospf 1
+network 192.168.10.0 0.0.0.255 area 0
+network 192.168.3.0 0.0.0.255 area 0
+```
+
+Verificamos que ambos routers formaran adyacencia OSPF y tuvieran las rutas con marcador “O” en la RIB. Luego, en R0 dentro del proceso BGP (AS100) configuramos:
+```
+address-family ipv4 unicast
+redistribute ospf 1
+```
+Así, BGP comenzó a anunciar automáticamente todas las rutas OSPF de AS100 a R1. En R1 comprobamos con `show ip bgp` que aparecían `192.168.3.0/24` y `192.168.10.0/24` junto con las redes originales de AS100, y `show ip route bgp` confirmaba que las instalaba marcadas como “B”.
+
+Rutas ospf en router 2 dentro de AS100:
+
+![image](https://github.com/user-attachments/assets/2860def5-9fe1-4122-8d73-64c714da05a4)
+
+Tabla BGP router 0:
+
+![image](https://github.com/user-attachments/assets/3362e0cd-4ec8-4001-8eac-4390d9802cc5)
+
+Tabla BGP router 1:
+
+![image](https://github.com/user-attachments/assets/32c629b3-6232-419d-9564-f72beb89a377)
+
+Redistribuir OSPF en el router 2 a través del router 1 por BGP:
+
+![image](https://github.com/user-attachments/assets/65ad8606-dae4-4469-8143-102b9f16ff1f)
+
+Tabla de rutas router 0:
+
+![image](https://github.com/user-attachments/assets/754e5ff4-10d1-4f38-a08c-e48ea89044ee)
+
+Tabla de rutas router 1 con las rutas aprendidas por OSPF en AS100:
+
+![image](https://github.com/user-attachments/assets/78aef518-013f-43ea-a7f9-dba309f8084e)
+
+Tabla de rutas router 2:
+
+![image](https://github.com/user-attachments/assets/6f1a1b4b-31e0-438f-b37d-2b525b2b8b16)
+
+---
+
+### 9) Verificación final de conectividad con h4 en ambos AS
+Por último, realizamos los siguientes pings:
+- Desde h4 (`192.168.3.2`) hacia h2 (`192.168.2.2`) y h0 (`192.168.1.2`).
+- Desde h2 y h3 hacia h4.
+- Desde h0 y h1 también hacia h4.
+
+Todos los pings fueron exitosos, demostrando que la redistribución OSPF→BGP y las rutas estáticas estaban correctamente configuradas, garantizando conectividad total entre los cinco hosts en los dos AS.
+
+ping de pc1 a pc4:
+
+![image](https://github.com/user-attachments/assets/86c3d20b-22cc-4d6b-932a-7c530bbe69ec)
+
+ping de pc4 a pc2:
+
+![image](https://github.com/user-attachments/assets/e47f3899-5097-46c3-a098-b8698be09de4)
