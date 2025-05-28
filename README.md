@@ -198,3 +198,89 @@ El problema se originó cuando un enrutador del sistema autónomo AS7007, filtr�
 Kentik
 
 - Revisión de prácticas: El incidente llevó a una revisión de las prácticas de enrutamiento BGP, destacando la necesidad de implementar filtros de rutas y mecanismos de validación más robustos para prevenir la propagación de información incorrecta.
+
+## Parte II: Simulaciones y Análisis
+
+### 1) Análisis de la configuración BGP y evidencia de que el protocolo está activo
+Para verificar que BGP está funcionando correctamente, primero abrimos sesión en cada router y ejecutamos `show ip bgp summary`.
+
+En Router 0:
+
+![image](https://github.com/user-attachments/assets/f5698255-35e5-4cd4-a5b9-fe724fd90d72)
+
+![image](https://github.com/user-attachments/assets/69885c8a-abf0-4aac-967f-a59bdd066a28)
+
+En Router 1:
+
+![image](https://github.com/user-attachments/assets/a624653d-2d1f-40b7-a396-829f80678856)
+
+![image](https://github.com/user-attachments/assets/b84e9ff9-faa5-49b4-8a15-8359c233c552)
+
+En la salida de R1 pude ver una línea como:
+
+10.0.0.1  …  Up/Down 00:00:53  State/PfxRcd 4
+
+Salida la cual indica que la sesión eBGP con su vecino en AS100 ha llegado a estado Established y ha recibido 4 prefijos (PfxRcd 4). 
+A continuación usamos show ip bgp para listar todos los prefijos conocidos por BGP y sus atributos (Next Hop, AS-PATH, origen). Por ejemplo, en R1 aparecían tanto su red local 192.168.2.0/24 con Next Hop 0.0.0.0 (prefijo propio) como la red 192.168.1.0/24 aprendida de R0 con Next Hop 10.0.0.1. Finalmente, con show ip route bgp confirmamos que esas rutas se habían instalado en la RIB, pues R1 mostraba:
+
+B 192.168.1.0/24 [20/0] via 10.0.0.1
+
+donde la “B” indica que proviene de BGP y, por tanto, el router usará esa ruta para reenviar tráfico hacia AS100.
+
+---
+
+### 2) Comprobación de la conectividad entre hosts de cada AS
+Desde h0 a h2:
+
+![image](https://github.com/user-attachments/assets/bbdec887-4387-4ea8-b750-70d4c13ae3c3)
+
+Desde h0 a h3:
+
+![image](https://github.com/user-attachments/assets/7ed9d1d1-0546-4139-aa9b-01c8360eb462)
+
+Desde h1 a h2:
+
+![image](https://github.com/user-attachments/assets/86169c3d-07b9-49fc-aefa-2d8e1c83d7cf)
+
+Desde h1 a h3:
+
+![image](https://github.com/user-attachments/assets/8b8ef529-46b0-4ed4-9538-92128a3cdf54)
+
+
+Con la vecindad BGP ya establecida y las rutas correctamente instaladas, hicimos pings cruzados desde los hosts de AS100 (h0: `192.168.1.2` y h1: `192.168.1.3`) hacia los hosts de AS200 (h2: `192.168.2.2` y h3: `192.168.2.3`) y viceversa. En los primeros intentos (h0 → h2/h3) obtuvimos 25% de _packet loss_ porque las rutas aún se estaban propagando; al repetir el ping obtuvimos 0% de pérdida, lo que confirma que cada router reenvía los paquetes a través de BGP de forma correcta.
+
+---
+
+### 3) Simulación de tráfico y caída/recuperación de un router
+Para entender cómo reacciona BGP ante una interrupción, apagué intencionadamente Router 1 (AS200) y observé en R0 los mensajes capturados por Wireshark dentro de Packet Tracer (Foto 3). Primero apareció un **TCP FIN** de la conexión BGP y, tras reiniciar R1, un **three-way handshake** sobre el puerto 179. A continuación vi los mensajes **OPEN** desde ambos extremos y varios **KEEPALIVE** hasta que la sesión volvió a _Established_, y finalmente los **UPDATE** con los prefijos intercambiados. Esta secuencia demuestra cómo BGP restablece la vecindad y anuncia las rutas al recuperarse.
+
+---
+
+### 4) Configuración IPv6 y verificación de conectividad entre ambos AS
+En esta etapa añadimos direcciones IPv6 a todas las interfaces de R0, R1 y los PCs, y habilitamos `ipv6 unicast-routing` en cada router. Asignamos a R0 las direcciones `2001:DB8:1::1/64` (backbone) y `2001:DB8:2::1/64` (AS100 interna), y a R1 `2001:DB8:1::2/64` (backbone) y `2001:DB8:3::1/64` (AS200 interna). Sin embargo, el soporte de Packet Tracer no permite mandar paquetes IPv6 mediante el protocolo BGP, por lo que este ejercicio no pudo ser resuelto.
+
+---
+
+### 5) Documentación del diseño de la red en tabla
+Para dejar constancia clara de la topología, armamos la siguiente tabla con cada dispositivo, interfaz, las direcciones IPv4 y IPv6, las máscaras y un comentario sobre su función:
+
+| Equipo   | Interfaz         | Red IPv4     | IP IPv4      | Máscara | IPv6              | Comments       |
+|----------|------------------|--------------|--------------|---------|-------------------|----------------|
+| Router0  | FastEthernet0/0  | 10.0.0.0     | 10.0.0.1     | /24     | 2001:DB8:1::1/64  | Backbone eBGP  |
+| Router0  | FastEthernet0/1  | 192.168.1.0  | 192.168.1.1  | /24     | 2001:DB8:2::1/64  | AS100 interna  |
+| Router1  | FastEthernet0/0  | 10.0.0.0     | 10.0.0.2     | /24     | 2001:DB8:1::2/64  | Backbone eBGP  |
+| Router1  | FastEthernet0/1  | 192.168.2.0  | 192.168.2.1  | /24     | 2001:DB8:3::1/64  | AS200 interna  |
+
+---
+
+### 6) Incorporación de R2, switch y quinto host (h4) en AS100
+Se añadió un tercer router (R2) al AS100, conectando su FastEthernet0/0 a R0 (`192.168.10.2/24` ↔ `192.168.10.1/24`) y conectando un switch a su FastEthernet0/1. Al switch se conectó el host h4 configurado con `192.168.3.2/24` y puerta de enlace `192.168.3.1`. Con ello quedó una nueva LAN interna (`192.168.3.0/24`) dentro de AS100.
+
+---
+
+### 7) Configuración de rutas estáticas en AS100
+Para que R0 y R2 conozcan mutuamente todas las subredes de AS100 se usaron estos comandos:
+
+**En R0:**
+
+
